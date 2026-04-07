@@ -1,76 +1,65 @@
 import asyncio
-import asyncpraw
+import aiohttp
+import random
 from typing import List, Dict, Optional, Any
-from utils.config import REDDIT_CONFIG
 
-async def process_post(submission: asyncpraw.models.Submission, sub_name: str) -> Optional[Dict[str, Any]]:
+request_semaphore = asyncio.Semaphore(1)
+
+async def process_raw_post(post_data: Dict[str, Any], sub_name: str) -> Optional[Dict[str, Any]]:
     try:
-        if not submission.url or submission.removed_by_category:
+        data = post_data.get("data", {})
+        if not data.get("url") or data.get("removed_by_category"):
             return None
 
         return {
-            "id": submission.id,
-            "url": submission.url,
-            "title": submission.title,
-            "score": submission.score,
-            "upvote_ratio": submission.upvote_ratio,
-            "created_utc": submission.created_utc,
+            "id": data.get("id"),
+            "title": data.get("title"),
             "subreddit": sub_name,
-            "is_external": not submission.is_self
+            "url": data.get("url")
         }
-    except Exception as e:
-        print(f"[-] Logic Error in processor: {e}")
+    except Exception:
         return None
 
-async def crawl_subreddit(reddit: asyncpraw.Reddit, sub_name: str, limit: int = 25) -> List[Dict[str, Any]]:
-    posts_found = {} 
-    
-    try:
-        subreddit = await reddit.subreddit(sub_name)
+async def fetch_with_throttle(session: aiohttp.ClientSession, sub_name: str):
+    async with request_semaphore:
+        delay = random.uniform(2.0, 4.0) 
+        await asyncio.sleep(delay)
         
-        feeds = [subreddit.hot(limit=limit), subreddit.new(limit=limit)]
+        url = f"https://www.reddit.com/r/{sub_name}/new.json?limit=100"
         
-        for feed in feeds:
-            async for submission in feed:
-                data = await process_post(submission, sub_name)
-                if data:
-                    posts_found[data["id"]] = data
-                    
-        return list(posts_found.values())
-
-    except Exception as e:
-        print(f"[!] Network Error in r/{sub_name}: {e}")
-        return []
-
-async def master_crawler(targets: List[str], limit_per_feed: int = 25) -> List[Dict[str, Any]]:
-
-    async with asyncpraw.Reddit(**REDDIT_CONFIG) as reddit:
-        tasks = [crawl_subreddit(reddit, sub, limit_per_feed) for sub in targets]
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        master_list = []
-        for res in results:
-            if isinstance(res, list):
-                master_list.extend(res)
-            elif isinstance(res, Exception):
-                print(f"[!!] Critical Task Failure: {res}")
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    raw = await response.json()
+                    children = raw.get("data", {}).get("children", [])
+                    print(f"[+] Successfully fetched r/{sub_name} (Paused {delay:.2f}s)")
+                    return [await process_raw_post(c, sub_name) for c in children]
                 
-        return master_list
+                elif response.status == 429:
+                    print(f"[!!!] 429 Too Many Requests on r/{sub_name}. REDDIT BLOCKED YOU.")
+                    return []
+                else:
+                    print(f"[!] HTTP {response.status} on r/{sub_name}")
+                    return []
+        except Exception as e:
+            print(f"[!] Connection failed for r/{sub_name}: {e}")
+            return []
+
+async def master_defensive_crawler(targets: List[str]):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
+        tasks = [fetch_with_throttle(session, sub) for sub in targets]
+        results = await asyncio.gather(*tasks)
+        
+        final_list = [post for sublist in results if sublist for post in sublist if post]
+        return final_list
 
 if __name__ == "__main__":
-    target_subreddits = ["technology", "programming", "dataisbeautiful"]
+    subs = ["ecommerce", "shopify", "Entrepreneur", "smallbusiness"]
     
-    try:
-        print(f"[*] Initializing Crawler for: {target_subreddits}")
-        final_results = asyncio.run(master_crawler(target_subreddits))
-        
-        print(f"\n[+] Extraction Complete.")
-        print(f"[+] Total Unique Posts Found: {len(final_results)}")
-        
-        # Print first 3 results as verification
-        for post in final_results[:3]:
-            print(f" - [{post['subreddit']}] {post['title'][:50]}... -> {post['url']}")
-            
-    except KeyboardInterrupt:
-        print("\n[!] Shutdown initiated by user.")
+    print("[*] Launching Defensive Scraper...")
+    data = asyncio.run(master_defensive_crawler(subs))
+    print(f"\n[+] Collected {len(data)} posts safely.")
