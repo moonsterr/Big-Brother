@@ -14,7 +14,6 @@ class AsyncFetcher:
         self.proxy = PROXY_CONFIG["url"] if PROXY_CONFIG.get("enabled") else None
 
     async def fetch_json(self, session: aiohttp.ClientSession, url: str, delay_range: tuple = (6, 12)) -> Optional[Dict[str, Any]]:
-        """A generic, throttled, proxied JSON fetcher."""
         async with self.semaphore:
             wait = random.uniform(*delay_range)
             await asyncio.sleep(wait)

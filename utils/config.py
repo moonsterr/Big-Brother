@@ -8,9 +8,9 @@ env_path = BASE_DIR / ".env"
 load_dotenv(dotenv_path=env_path)
 
 if not env_path.exists():
-    print(f"!!! CRITICAL: .env not found at {env_path}")
+    print(f"!!!! CRITICAL: .env not found at {env_path}")
 else:
-    print(f"[*] .env detected at: {env_path}")
+    print(f"\t .env detected at: {env_path}")
     print(f"proxy_url is {os.getenv("PROXY_URL")}")
 REDDIT_CONFIG = {
     "client_id": "YOUR_ID",

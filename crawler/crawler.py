@@ -26,7 +26,6 @@ class RedditScanner:
         self.engine = AsyncFetcher(user_agent=ua)
 
     async def process_post(self, post_data: Dict[str, Any], sub_name: str) -> Optional[Dict[str, Any]]:
-        """Extracts specific fields from raw Reddit JSON."""
         try:
             d = post_data.get("data", {})
             if not d.get("url") or d.get("removed_by_category"):
@@ -45,7 +44,6 @@ class RedditScanner:
             return None
 
     async def scan(self, targets: List[str]):
-        """Orchestrates the fetch and process flow."""
         logger.info(f"Starting crawl on targets: {targets}")
         
         async with aiohttp.ClientSession(headers=self.engine.headers) as session:
