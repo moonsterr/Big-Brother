@@ -4,6 +4,7 @@ import random
 import logging
 from typing import Optional, Dict, Any
 from utils.config import PROXY_CONFIG
+from utils.config import BASE_DIR
 
 logger = logging.getLogger("NetworkEngine")
 

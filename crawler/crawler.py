@@ -18,9 +18,9 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger("RedditScanner")
+logger = logging.getLogger("RedditCrawler")
 
-class RedditScanner:
+class RedditCrawler:
     def __init__(self):
         ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0"
         self.engine = AsyncFetcher(user_agent=ua)
@@ -69,10 +69,10 @@ class RedditScanner:
 if __name__ == "__main__":
     target_subs = ["shopify", "AmazonSeller", "Entrepreneur", "smallbusiness"]
     
-    scanner = RedditScanner()
+    crawler = RedditCrawler()
     
     try:
-        data = asyncio.run(scanner.scan(target_subs))
+        data = asyncio.run(crawler.scan(target_subs))
         logger.info(f"MISSION_COMPLETE | Total Unique Posts Found: {len(data)}")
     except KeyboardInterrupt:
         logger.warning("USER_ABORT | Shutdown initiated.")
