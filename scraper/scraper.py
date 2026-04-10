@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 
 from utils.network import AsyncFetcher
+from ingestion.analysis import run_analysis
 
 logger = logging.getLogger("RedditScraper")
 
@@ -12,11 +13,26 @@ class RedditScraper:
     def __init__(self):
         ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BigBrother/1.0"
         self.engine = AsyncFetcher(user_agent=ua, max_concurrent=1)
+    
+    def _prepare_content_for_llm(self, enriched_post: Dict[str, Any]) -> str:
+        post = enriched_post['post']
+        content = f"TITLE: {post['title']}\n"
+        content += f"OP BODY: {post['body']}\n\n"
+        content += "--- COMMENTS ---\n"
+        
+        def flatten(comments, depth=0):
+            text = ""
+            for c in comments:
+                text += f"{'  ' * depth}[{c.get('author')}]: {c.get('body')}\n"
+                if c.get('replies'):
+                    text += flatten(c['replies'], depth + 1)
+            return text
+            
+        content += flatten(enriched_post['comments'])
+        return content
 
     def extract_comments_recursive(self, comment_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Walks through the nested Reddit comment tree to extract every single reply.
-        """
+        
         comments = []
         children = comment_data.get("data", {}).get("children", [])
         
@@ -76,6 +92,8 @@ class RedditScraper:
                 if raw_data:
                     enriched_post = await self.process_post_detail(raw_data)
                     if enriched_post:
+                        print(enriched_post)
+                        analysis = run_analysis(enriched_post)
                         logger.info(f"SCRAPE_SUCCESS | ID: {post['id']} | Found {len(enriched_post['comments'])} top-level threads")
                         final_results.append(enriched_post)
                 

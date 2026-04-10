@@ -1,0 +1,10 @@
+{
+  "is_problem": true,
+  "problem_summary": "High Shopify transaction fees",
+  "problem_category": "payments",
+  "sentiment": -0.8,
+  "agreement_signal": 0.7,
+  "business_potential": 8.2,
+  "urgency": 7.5,
+  "advice": false
+}

@@ -36,7 +36,7 @@ class Orchestrator:
         self.data = raw_discovery 
         self.print_state_sample("AFTER_CRAWLER_DISCOVERY", self.data)
 
-        # self.data = await self.scraper.scrape(raw_discovery) 
+        self.data = await self.scraper.scrape(raw_discovery) 
         
         
         if len(self.data) > 0 and "comments" in self.data[0]:
