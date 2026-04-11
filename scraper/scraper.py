@@ -13,6 +13,7 @@ class RedditScraper:
     def __init__(self):
         ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BigBrother/1.0"
         self.engine = AsyncFetcher(user_agent=ua, max_concurrent=1)
+        self.gpu_limit = asyncio.Semaphore(1)
     
     def _prepare_content_for_llm(self, enriched_post: Dict[str, Any]) -> str:
         post = enriched_post['post']
@@ -79,11 +80,23 @@ class RedditScraper:
         except Exception as e:
             logger.error(f"PARSE_ERROR | Extraction failed: {e}")
             return None
+    
+    async def _analyze_with_semaphore(self, enriched_post: Dict[str, Any]):
+        async with self.gpu_limit:
+            llm_input = self._prepare_content_for_llm(enriched_post)
+            
+            analysis_result = await run_analysis(llm_input)
+            
+            enriched_post['analysis'] = analysis_result
+            
+            score = analysis_result.get('business_potential', 'N/A') if isinstance(analysis_result, dict) else "Done"
+            logger.info(f"SUCCESS   | ID: {enriched_post['post']['id']} | Signal: {score}")
+            return enriched_post
 
     async def scrape(self, discovered_posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        logger.info(f"PIPELINE_START | Processing {len(discovered_posts)} nodes")
+        logger.info(f"PIPELINE_START | Target: {len(discovered_posts)} nodes")
 
-        final_results = []
+        tasks = []
         async with aiohttp.ClientSession(headers=self.engine.headers) as session:
             for post in discovered_posts:
                 url = f"https://www.reddit.com/comments/{post['id']}.json"
@@ -96,23 +109,19 @@ class RedditScraper:
                 if not enriched_post:
                     continue
 
-                has_body = bool(enriched_post['post']['body'].strip())
-                has_comments = len(enriched_post['comments']) > 0
-
-                if not has_body and not has_comments:
-                    logger.warning(f"SKIP | ID: {post['id']} | Reason: No content/comments")
+                if not enriched_post['post']['body'].strip() and not enriched_post['comments']:
                     continue
 
-                logger.info(f"ANALYZING | ID: {post['id']} | Title: '{post['title'][:40]}...' | Comments: {len(enriched_post['comments'])}")
+                logger.info(f"QUEUED    | ID: {post['id']} | Moving to next fetch...")
+                
+                task = asyncio.create_task(self._analyze_with_semaphore(enriched_post))
+                tasks.append(task)
 
-                llm_input = self._prepare_content_for_llm(enriched_post)
-                analysis_result = await run_analysis(llm_input)
-
-                enriched_post['analysis'] = analysis_result
-                final_results.append(enriched_post)
-
-                score = analysis_result.get('business_potential', 'N/A') if isinstance(analysis_result, dict) else "Done"
-                logger.info(f"SUCCESS | ID: {post['id']} | Signal: {score}")
+        logger.info(f"FETCH_COMPLETE | Waiting for {len(tasks)} analyses to finalize...")
+        
+        final_results = await asyncio.gather(*tasks)
+        
+        final_results = [r for r in final_results if r]
 
         logger.info(f"PIPELINE_COMPLETE | Final Count: {len(final_results)}")
         return final_results

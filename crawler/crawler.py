@@ -54,15 +54,16 @@ class RedditCrawler:
             
             results = await asyncio.gather(*tasks)
             
-            final_data = []
-            for i, raw_json in enumerate(results):
-                if raw_json:
-                    sub_name = targets[i]
-                    children = raw_json.get("data", {}).get("children", [])
+            post_tasks = []
+            for sub_raw in results:
+                if sub_raw:
+                    children = sub_raw.get("data", {}).get("children", [])
                     for child in children:
-                        processed = await self.process_post(child, sub_name)
-                        if processed:
-                            final_data.append(processed)
+                        # We DON'T await here. We just create the coroutine objects.
+                        post_tasks.append(self.process_post(child, targets[i]))
+
+            final_data = await asyncio.gather(*post_tasks)
+            final_data = [p for p in final_data if p]
             
             return final_data
 
