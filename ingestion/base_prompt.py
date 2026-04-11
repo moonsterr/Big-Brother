@@ -5,11 +5,11 @@ You are a business analyst.
 Analyze this Reddit post and extract structured insights.
 
 RULES:
-- Be objective, not emotional
-- Only extract real problems
-- Normalize wording (make similar problems consistent)
-- Output ONLY valid JSON
-
+ - Identify if the following text describes a business or technical problem. 
+ - Output a SINGLE JSON object. 
+ - DO NOT include markdown code blocks. 
+ - DO NOT include commentary, notes, or trailing text.
+ - If no comments exist, agreement_signal MUST be 0.
 SCHEMA:
 {{
   "is_problem": boolean,

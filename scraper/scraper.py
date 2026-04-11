@@ -81,20 +81,38 @@ class RedditScraper:
             return None
 
     async def scrape(self, discovered_posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        logger.info(f"INITIATING_DEEP_SCRAPE | Target Count: {len(discovered_posts)}")
-        
+        logger.info(f"PIPELINE_START | Processing {len(discovered_posts)} nodes")
+
         final_results = []
         async with aiohttp.ClientSession(headers=self.engine.headers) as session:
             for post in discovered_posts:
                 url = f"https://www.reddit.com/comments/{post['id']}.json"
-                
+
                 raw_data = await self.engine.fetch_json(session, url)
-                if raw_data:
-                    enriched_post = await self.process_post_detail(raw_data)
-                    if enriched_post:
-                        print(enriched_post)
-                        analysis = run_analysis(enriched_post)
-                        logger.info(f"SCRAPE_SUCCESS | ID: {post['id']} | Found {len(enriched_post['comments'])} top-level threads")
-                        final_results.append(enriched_post)
-                
+                if not raw_data:
+                    continue
+
+                enriched_post = await self.process_post_detail(raw_data)
+                if not enriched_post:
+                    continue
+
+                has_body = bool(enriched_post['post']['body'].strip())
+                has_comments = len(enriched_post['comments']) > 0
+
+                if not has_body and not has_comments:
+                    logger.warning(f"SKIP | ID: {post['id']} | Reason: No content/comments")
+                    continue
+
+                logger.info(f"ANALYZING | ID: {post['id']} | Title: '{post['title'][:40]}...' | Comments: {len(enriched_post['comments'])}")
+
+                llm_input = self._prepare_content_for_llm(enriched_post)
+                analysis_result = await run_analysis(llm_input)
+
+                enriched_post['analysis'] = analysis_result
+                final_results.append(enriched_post)
+
+                score = analysis_result.get('business_potential', 'N/A') if isinstance(analysis_result, dict) else "Done"
+                logger.info(f"SUCCESS | ID: {post['id']} | Signal: {score}")
+
+        logger.info(f"PIPELINE_COMPLETE | Final Count: {len(final_results)}")
         return final_results
